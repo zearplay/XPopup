@@ -16,8 +16,6 @@ import com.blankj.utilcode.util.RomUtils;
 import com.blankj.utilcode.util.ScreenUtils;
 import com.google.android.material.tabs.TabLayout;
 import com.lxj.xpopup.XPopup;
-import com.lxj.xpopup.core.BasePopupView;
-import com.lxj.xpopup.impl.LoadingPopupView;
 import com.lxj.xpopup.util.XPopupUtils;
 import com.lxj.xpopupdemo.fragment.AllAnimatorDemo;
 import com.lxj.xpopupdemo.fragment.CustomAnimatorDemo;
@@ -65,13 +63,6 @@ public class MainActivity extends AppCompatActivity {
 //        XPopup.setPrimaryColor(Color.RED);
 //        XPopup.setIsLightStatusBar(true);
 //        XPopup.setNavigationBarColor(Color.RED);
-        final BasePopupView loadingPopupView = new XPopup.Builder(this)
-                .isDestroyOnDismiss(true)
-                .asLoading(null, LoadingPopupView.Style.ProgressBar).show();
-
-        loadingPopupView.delayDismiss(1200);
-
-
 //        new XPopup.Builder(this).asConfirm("asda", "dasdadas", null).show();
 
         String str = RomUtils.getRomInfo().toString() + " " + "deviceHeight：" + XPopupUtils.getScreenHeight(MainActivity.this)

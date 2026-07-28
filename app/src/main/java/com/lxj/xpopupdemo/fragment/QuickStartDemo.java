@@ -24,7 +24,6 @@ import com.lxj.xpopup.core.AttachPopupView;
 import com.lxj.xpopup.core.BasePopupView;
 import com.lxj.xpopup.enums.PopupAnimation;
 import com.lxj.xpopup.enums.PopupPosition;
-import com.lxj.xpopup.impl.LoadingPopupView;
 import com.lxj.xpopup.interfaces.OnConfirmListener;
 import com.lxj.xpopup.interfaces.OnInputConfirmListener;
 import com.lxj.xpopup.interfaces.OnSelectListener;
@@ -71,7 +70,6 @@ public class QuickStartDemo extends BaseFragment implements View.OnClickListener
         view.findViewById(R.id.btnShowInputConfirm).setOnClickListener(this);
         view.findViewById(R.id.btnShowCenterList).setOnClickListener(this);
         view.findViewById(R.id.btnShowCenterListWithCheck).setOnClickListener(this);
-        view.findViewById(R.id.btnShowLoading).setOnClickListener(this);
         view.findViewById(R.id.btnShowBottomList).setOnClickListener(this);
         view.findViewById(R.id.btnShowBottomListWithCheck).setOnClickListener(this);
         view.findViewById(R.id.btnShowDrawerLeft).setOnClickListener(this);
@@ -126,7 +124,6 @@ public class QuickStartDemo extends BaseFragment implements View.OnClickListener
     CustomDrawerPopupView drawerPopupView;
     AttachPopupView attachPopupView;
     BasePopupView popupView;
-    LoadingPopupView loadingPopup;
     CustomAttachPopup2 customAttach2;
 
     private void loopPopup() {
@@ -205,7 +202,6 @@ public class QuickStartDemo extends BaseFragment implements View.OnClickListener
                                 new OnInputConfirmListener() {
                                     @Override
                                     public void onConfirm(String text) {
-//                                          new XPopup.Builder(getContext()).asLoading().show();
                                     }
                                 })
                         .show();
@@ -242,38 +238,6 @@ public class QuickStartDemo extends BaseFragment implements View.OnClickListener
                                     }
                                 })
                         .show();
-                break;
-            case R.id.btnShowLoading: //在中间弹出的Loading加载框
-                if (loadingPopup == null) {
-                    loadingPopup = (LoadingPopupView) new XPopup.Builder(getContext())
-                            .dismissOnBackPressed(false)
-                            .isLightNavigationBar(true)
-//                            .asLoading(null, R.layout.custom_loading_popup)
-                            .asLoading("少时诵诗书", LoadingPopupView.Style.ProgressBar)
-                            .show();
-                } else {
-                    loadingPopup.setStyle(LoadingPopupView.Style.ProgressBar);
-                    loadingPopup.show();
-                }
-                loadingPopup.postDelayed(new Runnable() {
-                    @Override
-                    public void run() {
-                        loadingPopup.setTitle("加载中长度变化啊");
-                        loadingPopup.setStyle(LoadingPopupView.Style.Spinner);
-                        loadingPopup.postDelayed(new Runnable() {
-                            @Override
-                            public void run() {
-                                loadingPopup.setTitle("");
-                            }
-                        }, 2000);
-                    }
-                }, 2000);
-                loadingPopup.delayDismissWith(6000, new Runnable() {
-                    @Override
-                    public void run() {
-                        toast("我消失了！！！");
-                    }
-                });
                 break;
             case R.id.btnShowBottomList: //从底部弹出，带手势拖拽的列表弹窗
                 popupView = new XPopup.Builder(getContext())

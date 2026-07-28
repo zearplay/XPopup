@@ -92,8 +92,6 @@ public class DemoActivity extends AppCompatActivity {
     }
 
     public void showMultiPopup(){
-        final BasePopupView loadingPopup = new XPopup.Builder(this).asLoading();
-        loadingPopup.show();
         new XPopup.Builder(DemoActivity.this)
                 .autoDismiss(false)
                 .asBottomList("haha", new String[]{"点我显示弹窗", "点我显示弹窗", "点我显示弹窗", "点我显示弹窗"}, new OnSelectListener() {
@@ -101,9 +99,7 @@ public class DemoActivity extends AppCompatActivity {
                     public void onSelect(int position, String text) {
                         new XPopup.Builder(DemoActivity.this).asConfirm("测试", "aaaa", new OnConfirmListener() {
                             @Override
-                            public void onConfirm() {
-                                loadingPopup.dismiss();
-                            }
+                            public void onConfirm() { }
                         }).show();
                     }
                 }).show();
