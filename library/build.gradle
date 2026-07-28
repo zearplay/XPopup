@@ -1,4 +1,5 @@
 apply plugin: 'com.android.library'
+apply plugin: 'maven-publish'
 
 android {
     compileSdkVersion 30
@@ -14,6 +15,19 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication) {
+                from components.release
+                groupId = System.getenv("GROUP") ?: "com.github.zearplay"
+                artifactId = System.getenv("ARTIFACT") ?: "XPopup"
+                version = System.getenv("VERSION") ?: rootProject.ext.xpopup_version
+            }
         }
     }
 }
