@@ -18,9 +18,12 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowManager;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.core.view.ViewCompat;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
@@ -65,6 +68,8 @@ public abstract class BasePopupView extends FrameLayout implements LifecycleObse
     public boolean hasMoveUp = false;
     protected Handler handler = new Handler(Looper.getMainLooper());
     protected LifecycleRegistry lifecycleRegistry;
+    private Object onBackInvokedDispatcher;
+    private Object onBackInvokedCallback;
 
     public BasePopupView(@NonNull Context context) {
         super(context);
@@ -367,6 +372,7 @@ public abstract class BasePopupView extends FrameLayout implements LifecycleObse
         if (popupInfo != null && popupInfo.isRequestFocus) {
             setFocusableInTouchMode(true);
             setFocusable(true);
+            registerOnBackInvokedCallback();
             // 此处焦点可能被内部的EditText抢走，也需要给EditText也设置返回按下监听
             if (Build.VERSION.SDK_INT >= 28) {
                 addOnUnhandledKeyListener(this);
@@ -419,6 +425,69 @@ public abstract class BasePopupView extends FrameLayout implements LifecycleObse
         ViewCompat.addOnUnhandledKeyEventListener(view, this);
     }
 
+    /**
+     * Android 13+ 的系统返回事件通过 Window 的 OnBackInvokedDispatcher 分发。
+     * Android 16（targetSdk 36）默认不再调用 onBackPressed 或分发 KEYCODE_BACK。
+     */
+    private void registerOnBackInvokedCallback() {
+        if (Build.VERSION.SDK_INT < 33 || onBackInvokedCallback != null) return;
+        Window window = getHostWindow();
+        if (window == null) return;
+
+        Object dispatcher = Api33Impl.getOnBackInvokedDispatcher(window);
+        Object callback = Api33Impl.createOnBackInvokedCallback(new Runnable() {
+            @Override
+            public void run() {
+                processBackPressed();
+            }
+        });
+        Api33Impl.registerOnBackInvokedCallback(dispatcher, callback);
+        onBackInvokedDispatcher = dispatcher;
+        onBackInvokedCallback = callback;
+    }
+
+    private void unregisterOnBackInvokedCallback() {
+        if (Build.VERSION.SDK_INT < 33 || onBackInvokedDispatcher == null
+                || onBackInvokedCallback == null) return;
+        Api33Impl.unregisterOnBackInvokedCallback(
+                onBackInvokedDispatcher, onBackInvokedCallback);
+        onBackInvokedDispatcher = null;
+        onBackInvokedCallback = null;
+    }
+
+    /**
+     * 将 API 33 类型隔离在单独的实现类中，保证 Android 12 及以下不会解析新平台类型。
+     */
+    @RequiresApi(33)
+    private static class Api33Impl {
+        private Api33Impl() {
+        }
+
+        static Object getOnBackInvokedDispatcher(Window window) {
+            return window.getOnBackInvokedDispatcher();
+        }
+
+        static Object createOnBackInvokedCallback(final Runnable action) {
+            return new OnBackInvokedCallback() {
+                @Override
+                public void onBackInvoked() {
+                    action.run();
+                }
+            };
+        }
+
+        static void registerOnBackInvokedCallback(Object dispatcher, Object callback) {
+            ((OnBackInvokedDispatcher) dispatcher).registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_OVERLAY,
+                    (OnBackInvokedCallback) callback);
+        }
+
+        static void unregisterOnBackInvokedCallback(Object dispatcher, Object callback) {
+            ((OnBackInvokedDispatcher) dispatcher).unregisterOnBackInvokedCallback(
+                    (OnBackInvokedCallback) callback);
+        }
+    }
+
     protected void showSoftInput(View focusView) {
         if (popupInfo != null) {
             if (showSoftInputTask == null) {
@@ -454,14 +523,19 @@ public abstract class BasePopupView extends FrameLayout implements LifecycleObse
 
     protected boolean processKeyEvent(int keyCode, KeyEvent event){
         if (keyCode == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP && popupInfo != null) {
-            if(onBackPressed()) return true;
-            if (popupInfo.isDismissOnBackPressed &&
-                    (popupInfo.xPopupCallback == null || !popupInfo.xPopupCallback.onBackPressed(BasePopupView.this))) {
-                dismissOrHideSoftInput();
-            }
+            processBackPressed();
             return true;
         }
         return false;
+    }
+
+    private void processBackPressed() {
+        if (popupInfo == null) return;
+        if(onBackPressed()) return;
+        if (popupInfo.isDismissOnBackPressed &&
+                (popupInfo.xPopupCallback == null || !popupInfo.xPopupCallback.onBackPressed(BasePopupView.this))) {
+            dismissOrHideSoftInput();
+        }
     }
 
     class BackPressListener implements OnKeyListener {
@@ -827,6 +901,7 @@ public abstract class BasePopupView extends FrameLayout implements LifecycleObse
     }
 
     public void destroy() {
+        unregisterOnBackInvokedCallback();
         ViewCompat.removeOnUnhandledKeyEventListener(this, this);
         if(isCreated){
             lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY);
@@ -876,6 +951,7 @@ public abstract class BasePopupView extends FrameLayout implements LifecycleObse
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        unregisterOnBackInvokedCallback();
         if (getWindowDecorView() != null)
             KeyboardUtils.removeLayoutChangeListener(getHostWindow(), BasePopupView.this);
         handler.removeCallbacksAndMessages(null);
