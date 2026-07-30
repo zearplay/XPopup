@@ -44,6 +44,9 @@ import com.lxj.xpopup.impl.FullScreenPopupView;
 import com.lxj.xpopup.impl.PartShadowPopupView;
 import com.lxj.xpopup.util.KeyboardUtils;
 import com.lxj.xpopup.util.XPopupUtils;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -65,6 +68,8 @@ public abstract class BasePopupView extends FrameLayout implements LifecycleObse
     public boolean hasMoveUp = false;
     protected Handler handler = new Handler(Looper.getMainLooper());
     protected LifecycleRegistry lifecycleRegistry;
+    private Object onBackInvokedDispatcher;
+    private Object onBackInvokedCallback;
 
     public BasePopupView(@NonNull Context context) {
         super(context);
@@ -367,6 +372,7 @@ public abstract class BasePopupView extends FrameLayout implements LifecycleObse
         if (popupInfo != null && popupInfo.isRequestFocus) {
             setFocusableInTouchMode(true);
             setFocusable(true);
+            registerOnBackInvokedCallback();
             // 此处焦点可能被内部的EditText抢走，也需要给EditText也设置返回按下监听
             if (Build.VERSION.SDK_INT >= 28) {
                 addOnUnhandledKeyListener(this);
@@ -419,6 +425,73 @@ public abstract class BasePopupView extends FrameLayout implements LifecycleObse
         ViewCompat.addOnUnhandledKeyEventListener(view, this);
     }
 
+    /**
+     * Android 13开始返回手势由OnBackInvokedDispatcher分发，不再保证生成KEYCODE_BACK。
+     * 通过反射注册可以让旧版compileSdk继续构建，同时兼容targetSdk 33及以上的宿主应用。
+     */
+    private void registerOnBackInvokedCallback() {
+        if (Build.VERSION.SDK_INT < 33 || onBackInvokedCallback != null) return;
+        Window window = getHostWindow();
+        if (window == null) return;
+        try {
+            Class<?> callbackClass = Class.forName("android.window.OnBackInvokedCallback");
+            Class<?> dispatcherClass = Class.forName("android.window.OnBackInvokedDispatcher");
+            Method getDispatcherMethod = Window.class.getMethod("getOnBackInvokedDispatcher");
+            Object dispatcher = getDispatcherMethod.invoke(window);
+            if (dispatcher == null) return;
+
+            Object callback = Proxy.newProxyInstance(
+                    callbackClass.getClassLoader(),
+                    new Class<?>[]{callbackClass},
+                    new InvocationHandler() {
+                        @Override
+                        public Object invoke(Object proxy, Method method, Object[] args) {
+                            String methodName = method.getName();
+                            if ("onBackInvoked".equals(methodName)) {
+                                processBackPressed();
+                                return null;
+                            }
+                            if ("hashCode".equals(methodName)) {
+                                return System.identityHashCode(proxy);
+                            }
+                            if ("equals".equals(methodName)) {
+                                return args != null && args.length == 1 && proxy == args[0];
+                            }
+                            if ("toString".equals(methodName)) {
+                                return "XPopupOnBackInvokedCallback";
+                            }
+                            return null;
+                        }
+                    });
+            Method registerMethod = dispatcherClass.getMethod(
+                    "registerOnBackInvokedCallback", int.class, callbackClass);
+            // XPopup属于覆盖在页面上的浮层，应优先于Activity自身的返回回调。
+            int overlayPriority = dispatcherClass.getField("PRIORITY_OVERLAY").getInt(null);
+            registerMethod.invoke(dispatcher, overlayPriority, callback);
+            onBackInvokedDispatcher = dispatcher;
+            onBackInvokedCallback = callback;
+        } catch (Throwable ignore) {
+            onBackInvokedDispatcher = null;
+            onBackInvokedCallback = null;
+        }
+    }
+
+    private void unregisterOnBackInvokedCallback() {
+        if (Build.VERSION.SDK_INT < 33 || onBackInvokedDispatcher == null
+                || onBackInvokedCallback == null) return;
+        try {
+            Class<?> callbackClass = Class.forName("android.window.OnBackInvokedCallback");
+            Class<?> dispatcherClass = Class.forName("android.window.OnBackInvokedDispatcher");
+            Method unregisterMethod = dispatcherClass.getMethod(
+                    "unregisterOnBackInvokedCallback", callbackClass);
+            unregisterMethod.invoke(onBackInvokedDispatcher, onBackInvokedCallback);
+        } catch (Throwable ignore) {
+        } finally {
+            onBackInvokedDispatcher = null;
+            onBackInvokedCallback = null;
+        }
+    }
+
     protected void showSoftInput(View focusView) {
         if (popupInfo != null) {
             if (showSoftInputTask == null) {
@@ -454,14 +527,19 @@ public abstract class BasePopupView extends FrameLayout implements LifecycleObse
 
     protected boolean processKeyEvent(int keyCode, KeyEvent event){
         if (keyCode == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP && popupInfo != null) {
-            if(onBackPressed()) return true;
-            if (popupInfo.isDismissOnBackPressed &&
-                    (popupInfo.xPopupCallback == null || !popupInfo.xPopupCallback.onBackPressed(BasePopupView.this))) {
-                dismissOrHideSoftInput();
-            }
-            return true;
+            return processBackPressed();
         }
         return false;
+    }
+
+    private boolean processBackPressed() {
+        if (popupInfo == null) return false;
+        if(onBackPressed()) return true;
+        if (popupInfo.isDismissOnBackPressed &&
+                (popupInfo.xPopupCallback == null || !popupInfo.xPopupCallback.onBackPressed(BasePopupView.this))) {
+            dismissOrHideSoftInput();
+        }
+        return true;
     }
 
     class BackPressListener implements OnKeyListener {
@@ -827,6 +905,7 @@ public abstract class BasePopupView extends FrameLayout implements LifecycleObse
     }
 
     public void destroy() {
+        unregisterOnBackInvokedCallback();
         ViewCompat.removeOnUnhandledKeyEventListener(this, this);
         if(isCreated){
             lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY);
@@ -876,6 +955,7 @@ public abstract class BasePopupView extends FrameLayout implements LifecycleObse
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        unregisterOnBackInvokedCallback();
         if (getWindowDecorView() != null)
             KeyboardUtils.removeLayoutChangeListener(getHostWindow(), BasePopupView.this);
         handler.removeCallbacksAndMessages(null);
