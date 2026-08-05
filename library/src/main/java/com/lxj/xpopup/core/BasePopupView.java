@@ -430,28 +430,20 @@ public abstract class BasePopupView extends FrameLayout implements LifecycleObse
      * Android 16（targetSdk 36）默认不再调用 onBackPressed 或分发 KEYCODE_BACK。
      */
     private void registerOnBackInvokedCallback() {
-        if (Build.VERSION.SDK_INT < 33) return;
+        if (Build.VERSION.SDK_INT < 33 || onBackInvokedCallback != null) return;
         Window window = getHostWindow();
         if (window == null) return;
 
         Object dispatcher = Api33Impl.getOnBackInvokedDispatcher(window);
-        if (onBackInvokedCallback == null) {
-            onBackInvokedCallback = Api33Impl.createOnBackInvokedCallback(new Runnable() {
-                @Override
-                public void run() {
-                    processBackPressed();
-                }
-            });
-        } else if (onBackInvokedDispatcher != null && onBackInvokedDispatcher != dispatcher) {
-            Api33Impl.unregisterOnBackInvokedCallback(
-                    onBackInvokedDispatcher, onBackInvokedCallback);
-        }
-
-        // Dialog Window 在 dismiss 后可能清除系统侧注册，但 View 的字段仍暂时保留。
-        // 每次显示都重新注册同一个 callback；平台会先移除旧记录再重新加入，
-        // 同时保证重复显示或多层弹窗时，最后显示的弹窗优先处理返回事件。
-        Api33Impl.registerOnBackInvokedCallback(dispatcher, onBackInvokedCallback);
+        Object callback = Api33Impl.createOnBackInvokedCallback(new Runnable() {
+            @Override
+            public void run() {
+                processBackPressed();
+            }
+        });
+        Api33Impl.registerOnBackInvokedCallback(dispatcher, callback);
         onBackInvokedDispatcher = dispatcher;
+        onBackInvokedCallback = callback;
     }
 
     private void unregisterOnBackInvokedCallback() {
