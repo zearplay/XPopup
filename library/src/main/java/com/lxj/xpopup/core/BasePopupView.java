@@ -378,6 +378,10 @@ public abstract class BasePopupView extends FrameLayout implements LifecycleObse
                 addOnUnhandledKeyListener(this);
             } else {
                 setOnKeyListener(new BackPressListener());
+                // dismiss() clears this View's focus. On Android 8.1 and below,
+                // OnKeyListener only receives BACK while the View is focused,
+                // so a reused popup must explicitly recover focus on every show.
+                requestFocus();
             }
 
             //let all EditText can process back pressed.
