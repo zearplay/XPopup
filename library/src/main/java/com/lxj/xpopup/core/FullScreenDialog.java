@@ -178,6 +178,25 @@ public class FullScreenDialog extends Dialog {
         return this;
     }
 
+    /**
+     * Android 8.1 and below: consume BACK at the Dialog Window level.
+     * This remains stable when the popup View is reused and its focus was cleared on dismiss.
+     */
+    @Override
+    public boolean dispatchKeyEvent(@NonNull KeyEvent event) {
+        if (Build.VERSION.SDK_INT < 28
+                && event.getKeyCode() == KeyEvent.KEYCODE_BACK
+                && contentView != null
+                && contentView.popupInfo != null
+                && contentView.popupInfo.isRequestFocus) {
+            if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
+                contentView.processKeyEvent(event.getKeyCode(), event);
+            }
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);

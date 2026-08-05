@@ -376,12 +376,11 @@ public abstract class BasePopupView extends FrameLayout implements LifecycleObse
             // 此处焦点可能被内部的EditText抢走，也需要给EditText也设置返回按下监听
             if (Build.VERSION.SDK_INT >= 28) {
                 addOnUnhandledKeyListener(this);
-            } else {
+            } else if (popupInfo.isViewMode) {
+                // Dialog mode handles BACK at the Window callback, independent of View focus.
+                // View mode still needs a focused View to receive legacy key events.
                 setOnKeyListener(new BackPressListener());
-                // dismiss() clears this View's focus. On Android 8.1 and below,
-                // OnKeyListener only receives BACK while the View is focused,
-                // so a reused popup must explicitly recover focus on every show.
-                requestFocus();
+                if (isAttachedToWindow()) requestFocus();
             }
 
             //let all EditText can process back pressed.
@@ -398,9 +397,9 @@ public abstract class BasePopupView extends FrameLayout implements LifecycleObse
 //                    addOnUnhandledKeyListener(et);
                     if (Build.VERSION.SDK_INT >= 28) {
                         addOnUnhandledKeyListener(et);
-                    }else {
+                    } else if (popupInfo.isViewMode) {
                         boolean hasSetKeyListener = XPopupUtils.hasSetKeyListener(et);
-                        if(!hasSetKeyListener) et.setOnKeyListener(new BackPressListener());
+                        if (!hasSetKeyListener) et.setOnKeyListener(new BackPressListener());
                     }
                     if (i == 0) {
                         if (popupInfo.autoFocusEditText) {
